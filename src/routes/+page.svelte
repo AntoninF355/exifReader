@@ -1,14 +1,21 @@
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
+    import { onMount } from "svelte";
 
   let name = $state("");
   let greetMsg = $state("");
+  let testMsg = $state("");
 
   async function greet(event: Event) {
     event.preventDefault();
     // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
     greetMsg = await invoke("greet", { name });
   }
+
+
+  onMount(async() => {
+      testMsg = await invoke("test");
+  });
 </script>
 
 <main class="container">
@@ -32,6 +39,7 @@
     <button type="submit">Greet</button>
   </form>
   <p>{greetMsg}</p>
+  <p>{testMsg}</p>
 </main>
 
 <style>
