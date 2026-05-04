@@ -1,5 +1,6 @@
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
+  import { open } from "@tauri-apps/plugin-dialog";
     import { onMount } from "svelte";
 
   let name = $state("");
@@ -13,9 +14,24 @@
   }
 
 
-  onMount(async() => {
-      testMsg = await invoke("test");
-  });
+  async function selectFile() {
+    const selected = await open({
+      multiple: false,
+      filters: [
+        {
+          name: 'Images',
+          extensions: ['jpg', 'jpeg', 'png', 'arw', 'cr3', 'nef']
+        },
+      ],
+    });
+
+    if (selected === null) return; //cancel file selection
+
+    const meta = await invoke("read_exif_from_file", { filepath: selected });
+
+    console.log(meta);
+
+  }
 </script>
 
 <main class="container">
@@ -39,7 +55,7 @@
     <button type="submit">Greet</button>
   </form>
   <p>{greetMsg}</p>
-  <p>{testMsg}</p>
+  <button onclick={selectFile}>Select a file</button>
 </main>
 
 <style>
