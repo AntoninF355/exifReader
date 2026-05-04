@@ -7,7 +7,7 @@ struct PhotoMetadata {
     pub iso_speed: u32,
     pub shutter: f32,
     pub aperture: f32,
-    pub focal_len: f32,
+    pub focal_length: f32,
     pub make: String,
     pub model: String,
     pub datetime: Option<String>
@@ -39,7 +39,7 @@ fn read_exif_from_file(filepath: &str) -> Result<PhotoMetadata, String> {
         iso_speed: info.iso_speed,
         shutter: info.shutter,
         aperture: info.aperture,
-        focal_len: info.focal_len,
+        focal_length: info.focal_len,
         make: info.make,
         model: info.model,
         datetime: info.datetime.map(|d| d.to_string()) 
@@ -60,14 +60,14 @@ mod tests {
 
             assert!(meta.iso_speed > 0, "ISO devrait être > 0");
             assert!(meta.aperture > 0.0, "Ouverture devrait être > 0");
-            assert!(meta.focal_len > 0.0, "Focale devrait être > 0");
+            assert!(meta.focal_length > 0.0, "Focale devrait être > 0");
             assert!(!meta.make.is_empty(), "Make ne devrait pas être vide");
             assert!(!meta.model.is_empty(), "Model ne devrait pas être vide");
 
             // Affiche les valeurs pour vérification visuelle
             println!("ISO       : {}", meta.iso_speed);
             println!("Ouverture : f/{}", meta.aperture);
-            println!("Focale    : {}mm", meta.focal_len);
+            println!("Focale    : {}mm", meta.focal_length);
             println!("Vitesse   : 1/{}s", meta.shutter);
             println!("Appareil  : {} {}", meta.make, meta.model);
             println!("Date      : {:?}", meta.datetime);
