@@ -4,6 +4,7 @@ use serde::Serialize;
 
 #[derive(Serialize)]
 struct PhotoMetadata {
+    pub filename: String,
     pub iso_speed: u32,
     pub shutter: f32,
     pub aperture: f32,
@@ -20,7 +21,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
-        .invoke_handler(tauri::generate_handler![read_exif_from_file])
+        .invoke_handler(tauri::generate_handler![read_exif_from_file, read_exif_from_folder])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
@@ -34,8 +35,14 @@ fn read_exif_from_file(filepath: &str) -> Result<PhotoMetadata, String> {
 
     let info = image.full_info();
     
+    let filename = std::path::Path::new(filepath)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("unknown")
+        .to_string();
     
     Ok(PhotoMetadata { 
+        filename,
         iso_speed: info.iso_speed,
         shutter: info.shutter,
         aperture: info.aperture,
@@ -45,6 +52,30 @@ fn read_exif_from_file(filepath: &str) -> Result<PhotoMetadata, String> {
         datetime: info.datetime.map(|d| d.to_string()) 
     })
 }
+
+#[tauri::command]
+fn read_exif_from_folder(folder_path: String) -> Result<Vec<PhotoMetadata>, String> {
+    let extensions = ["jpg", "jpeg", "png", "arw", "cr3", "nef", "dng"];
+
+    let entries = fs::read_dir(&folder_path).map_err(|e| e.to_string())?;
+
+    let results: Vec<PhotoMetadata> = entries.filter_map(|entry| {
+    let path = entry.ok()?.path();
+        if !path.is_file() { return None; }
+
+        let ext = path.extension()?.to_str()?.to_lowercase();
+        if !extensions.contains(&ext.as_str()) { return None; }
+
+        // tente de lire l'EXIF — skip silencieux si échec
+        let path_str = path.to_string_lossy().to_string();
+        read_exif_from_file(&path_str).ok()
+    })
+    .collect();
+
+    Ok(results)
+
+}
+
 
 #[cfg(test)]
 mod tests {
