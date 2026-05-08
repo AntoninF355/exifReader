@@ -1,6 +1,34 @@
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
   import { open } from "@tauri-apps/plugin-dialog";
+  import type { PhotoMetadata } from "../types";
+
+  let photos = $state<PhotoMetadata[]>([]);
+  let loading = $state(false);
+  let error = $state<string | null>(null)
+  
+
+
+  async function selectFolder() {
+    const folder = await open({
+      directory: true,
+    });
+    if (!folder) return;
+
+    loading = true;
+    error = null;
+    
+    try {
+      const meta = await invoke<PhotoMetadata[]>("read_exif_from_folder", { folderPath: folder as string });
+      photos = meta;
+      console.log(`${meta.length} photos found in folder ${folder}`);
+    } catch (err) {
+      error = err instanceof Error ? err.message : String(err);
+      console.error("Error reading folder:", error);
+    } finally {
+      loading = false;
+    }
+  }
 
   async function selectFile() {
     const selected = await open({
@@ -8,17 +36,25 @@
       filters: [
         {
           name: 'Images',
-          extensions: ['jpg', 'jpeg', 'png', 'arw', 'cr3', 'nef']
+          extensions: ['jpg', 'jpeg', 'png', 'arw', 'cr3', 'nef', 'dng']
         },
       ],
     });
 
     if (selected === null) return; //cancel file selection
 
-    const meta = await invoke("read_exif_from_file", { filepath: selected });
-
-    console.log(meta);
-
+    loading = true;
+    error = null;
+    
+    try {
+      const meta = await invoke<PhotoMetadata>("read_exif_from_file", { filepath: selected as string });
+      console.log(meta);
+    } catch (err) {
+      error = err instanceof Error ? err.message : String(err);
+      console.error("Error reading file:", error);
+    } finally {
+      loading = false;
+    }
   }
 </script>
 
@@ -26,6 +62,28 @@
   <h1>Welcome to Exif Reader and analysis</h1>
 
   <button onclick={selectFile}>Select a file</button>
+  <button onclick={selectFolder}>Select a folder</button>
+  {#if loading}
+    <p>Loading...</p>
+  {/if}
+  {#if error}
+    <p style="color: red;">Error: {error}</p>
+  {/if}
+
+  {#if photos.length > 0}
+    <h2>Photos found: {photos.length}</h2>
+  {/if}
+
+  {#each photos as photo}
+    <div style="margin-top: 1em; padding: 1em; border: 1px solid #ccc; border-radius: 8px;">
+      <h2>{photo.filename}</h2>
+      <p><strong>Camera:</strong> {photo.make} {photo.model}</p>
+      <p><strong>Focal Length</strong> {photo.focal_length}mm</p>
+      <p><strong>Exposure:</strong> 1/{Math.round(1 / photo.shutter)}s at f/{photo.aperture}</p>
+      <p><strong>ISO:</strong> {photo.iso_speed}</p>
+      <p><strong>Date:</strong> {photo.datetime ? new Date(photo.datetime.replace(/^(\S+) (\S+) (\S+)$/, '$1T$2$3')).toLocaleString() : 'Unknown'}</p>
+    </div>
+  {/each}
 </main>
 
 <style>
