@@ -34,3 +34,34 @@ pub fn read_exif_from_file(filepath: &str) -> Result<PhotoMetadata, String> {
         thumbnail: thumb64
     })
 }
+
+
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+        fn read_exif_from_file_test() {
+            let result = read_exif_from_file("tests/Sony-a1-raw-00001.arw");
+
+            assert!(result.is_ok(), "Échec lecture EXIF : {:?}", result.err());
+
+            let meta = result.unwrap();
+
+            assert!(meta.iso_speed > 0, "ISO devrait être > 0");
+            assert!(meta.aperture > 0.0, "Ouverture devrait être > 0");
+            assert!(meta.focal_length > 0.0, "Focale devrait être > 0");
+            assert!(!meta.make.is_empty(), "Make ne devrait pas être vide");
+            assert!(!meta.model.is_empty(), "Model ne devrait pas être vide");
+
+            // Affiche les valeurs pour vérification visuelle
+            println!("ISO       : {}", meta.iso_speed);
+            println!("Ouverture : f/{}", meta.aperture);
+            println!("Focale    : {}mm", meta.focal_length);
+            println!("Vitesse   : 1/{}s", meta.shutter);
+            println!("Appareil  : {} {}", meta.make, meta.model);
+            println!("Date      : {:?}", meta.datetime);
+        }
+}
