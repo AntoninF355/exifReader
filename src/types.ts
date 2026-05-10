@@ -7,4 +7,5 @@ export interface PhotoMetadata {
   make: string;
   model: string;
   datetime?: string | null;
+  thumbnail?: string | null;
 }

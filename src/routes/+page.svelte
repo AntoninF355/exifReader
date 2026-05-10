@@ -75,13 +75,16 @@
   {/if}
 
   {#each photos as photo}
-    <div style="margin-top: 1em; padding: 1em; border: 1px solid #ccc; border-radius: 8px;">
-      <h2>{photo.filename}</h2>
-      <p><strong>Camera:</strong> {photo.make} {photo.model}</p>
-      <p><strong>Focal Length</strong> {photo.focal_length}mm</p>
-      <p><strong>Exposure:</strong> 1/{Math.round(1 / photo.shutter)}s at f/{photo.aperture}</p>
-      <p><strong>ISO:</strong> {photo.iso_speed}</p>
-      <p><strong>Date:</strong> {photo.datetime ? new Date(photo.datetime.replace(/^(\S+) (\S+) (\S+)$/, '$1T$2$3')).toLocaleString() : 'Unknown'}</p>
+    <div style="margin-top: 1em; padding: 1em; border: 1px solid #ccc; border-radius: 8px; display: flex; gap: 1em; align-items: flex-start; text-align: left;">
+      <img src={photo.thumbnail} alt={photo.filename} style="width: 160px; height: 120px; object-fit: cover; border-radius: 4px; flex-shrink: 0;" />
+      <div>
+        <h2 style="margin: 0 0 0.5em">{photo.filename}</h2>
+        <p><strong>Camera:</strong> {photo.make} {photo.model}</p>
+        <p><strong>Focal Length:</strong> {photo.focal_length}mm</p>
+        <p><strong>Exposure:</strong> 1/{Math.round(1 / photo.shutter)}s at f/{photo.aperture}</p>
+        <p><strong>ISO:</strong> {photo.iso_speed}</p>
+        <p><strong>Date:</strong> {photo.datetime ? new Date(photo.datetime.replace(/^(\S+) (\S+) (\S+)$/, '$1T$2$3')).toLocaleString() : 'Unknown'}</p>
+      </div>
     </div>
   {/each}
 </main>
