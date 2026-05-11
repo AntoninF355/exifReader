@@ -1,9 +1,10 @@
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
   import { open } from "@tauri-apps/plugin-dialog";
-  import type { PhotoMetadata } from "../types";
+  import type { PhotoMetadata, FolderAnalysis } from "../types";
 
   let photos = $state<PhotoMetadata[]>([]);
+  let stats = $state<FolderAnalysis['stats'] | null>(null);
   let loading = $state(false);
   let error = $state<string | null>(null)
   
@@ -19,9 +20,11 @@
     error = null;
     
     try {
-      const meta = await invoke<PhotoMetadata[]>("read_exif_from_folder", { folderPath: folder as string });
-      photos = meta;
-      console.log(`${meta.length} photos found in folder ${folder}`);
+      const result = await invoke<FolderAnalysis>("analyze_folder", { folderPath: folder as string });
+      photos = result.photos;
+      stats = result.stats;
+      console.log(`${photos.length} photos found in folder ${folder}`);
+      console.log("Stats:", stats);
     } catch (err) {
       error = err instanceof Error ? err.message : String(err);
       console.error("Error reading folder:", error);
