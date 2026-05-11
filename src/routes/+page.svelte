@@ -1,178 +1,229 @@
 <script lang="ts">
-  import { invoke } from "@tauri-apps/api/core";
-  import { open } from "@tauri-apps/plugin-dialog";
-  import type { PhotoMetadata, FolderAnalysis } from "../types";
+  import { invoke } from '@tauri-apps/api/core';
+  import { open } from '@tauri-apps/plugin-dialog';
+  import type { PhotoStats, FolderAnalysis } from '../types';
+  import { histoBars, shutterBars, apertureBars, rankBars } from '../lib/helpers';
+  import type { RankingEntryExt } from '../lib/helpers';
 
-  let photos = $state<PhotoMetadata[]>([]);
-  let stats = $state<FolderAnalysis['stats'] | null>(null);
-  let loading = $state(false);
-  let error = $state<string | null>(null)
-  
+  import UploadScreen  from '../lib/components/UploadScreen.svelte';
+  import SpinnerScreen from '../lib/components/SpinnerScreen.svelte';
+  import StatsHeader   from '../lib/components/StatsHeader.svelte';
+  import KpiGrid       from '../lib/components/KpiGrid.svelte';
+  import Histogram     from '../lib/components/Histogram.svelte';
+  import ApertureGrid  from '../lib/components/ApertureGrid.svelte';
+  import RankingList   from '../lib/components/RankingList.svelte';
+  import Modal         from '../lib/components/Modal.svelte';
 
+  // ── App state ────────────────────────────────────────────────────────────────
+  let stats:      PhotoStats | null = $state(null);
+  let loading:    boolean           = $state(false);
+  let folderPath: string            = $state('');
+  let error:      string | null     = $state(null);
+  let theme:      'light' | 'dark' = $state('light');
+  let spinCount:  number            = $state(0);
 
+  let flMode:  'count' | 'pct'  = $state('count');
+  let isoMode: 'count' | 'pct'  = $state('count');
+  let shMode:  'linear' | 'log' = $state('linear');
+
+  let modalOpen:  boolean            = $state(false);
+  let modalTitle: string             = $state('');
+  let modalSub:   string             = $state('');
+  let modalRows:  [string, string][] = $state([]);
+
+  // ── Derived bar data ─────────────────────────────────────────────────────────
+  const flBars     = $derived(histoBars(stats?.focal_length_buckets ?? [], flMode));
+  const isoBars    = $derived(histoBars(stats?.iso_buckets ?? [], isoMode));
+  const shBars     = $derived(shutterBars(stats?.shutter_buckets ?? [], shMode));
+  const apStops    = $derived(apertureBars(stats?.aperture_stops ?? []));
+  const camEntries = $derived(rankBars(stats?.cameras ?? []));
+  const lensEntries = $derived(rankBars(stats?.lenses ?? []));
+
+  // ── Theme sync ───────────────────────────────────────────────────────────────
+  $effect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+  });
+
+  // ── Folder selection + analysis ───────────────────────────────────────────────
   async function selectFolder() {
-    const folder = await open({
-      directory: true,
-    });
-    if (!folder) return;
-
-    loading = true;
     error = null;
-    
+    const selected = await open({ directory: true, multiple: false });
+    if (!selected || typeof selected !== 'string') return;
+    folderPath = selected;
+    await runAnalysis();
+  }
+
+  async function runAnalysis() {
+    loading   = true;
+    spinCount = 0;
+
+    const tick = setInterval(() => {
+      spinCount = Math.min(spinCount + Math.ceil(500 / 35) + Math.floor(Math.random() * 8), 99999);
+    }, 35);
+
     try {
-      const result = await invoke<FolderAnalysis>("analyze_folder", { folderPath: folder as string });
-      photos = result.photos;
+      const result: FolderAnalysis = await invoke('analyze_folder', { folderPath });
+      clearInterval(tick);
+      spinCount = result.stats.total;
+      await new Promise(r => setTimeout(r, 350));
       stats = result.stats;
-      console.log(`${photos.length} photos found in folder ${folder}`);
-      console.log("Stats:", stats);
-    } catch (err) {
-      error = err instanceof Error ? err.message : String(err);
-      console.error("Error reading folder:", error);
+    } catch (e) {
+      clearInterval(tick);
+      error = String(e);
     } finally {
       loading = false;
     }
   }
 
-  async function selectFile() {
-    const selected = await open({
-      multiple: false,
-      filters: [
-        {
-          name: 'Images',
-          extensions: ['jpg', 'jpeg', 'png', 'arw', 'cr3', 'nef', 'dng']
-        },
-      ],
-    });
-
-    if (selected === null) return; //cancel file selection
-
-    loading = true;
+  function goBack() {
+    stats = null;
     error = null;
-    
-    try {
-      const meta = await invoke<PhotoMetadata>("read_exif_from_file", { filepath: selected as string });
-      console.log(meta);
-    } catch (err) {
-      error = err instanceof Error ? err.message : String(err);
-      console.error("Error reading file:", error);
-    } finally {
-      loading = false;
-    }
+  }
+
+  function toggleTheme() {
+    theme = theme === 'light' ? 'dark' : 'light';
+  }
+
+  // ── Modal ─────────────────────────────────────────────────────────────────────
+  function openModal(entry: RankingEntryExt, type: 'camera' | 'lens') {
+    modalTitle = entry.name;
+    modalSub   = `${type === 'camera' ? 'Camera' : 'Lens'} · ${entry.count.toLocaleString()} photos`;
+    modalRows  = type === 'camera'
+      ? [
+          ['Photos',          entry.count.toLocaleString()],
+          ['Share',           entry.percentage.toFixed(1) + '%'],
+          ['Most-used ISO',   stats?.median_iso != null ? 'ISO ' + stats.median_iso : '—'],
+          ['Median aperture', stats?.median_aperture != null ? 'ƒ/' + stats.median_aperture : '—'],
+          ['Top focal',       stats?.most_used_focal_length != null ? stats.most_used_focal_length + ' mm' : '—'],
+          ['Peak hour',       stats?.most_active_hour != null ? stats.most_active_hour + ' h' : '—'],
+        ]
+      : [
+          ['Photos', entry.count.toLocaleString()],
+          ['Share',  entry.percentage.toFixed(1) + '%'],
+          ['Type',   entry.name.match(/\d+-\d+/) ? 'Zoom lens' : 'Prime lens'],
+        ];
+    modalOpen = true;
   }
 </script>
 
-<main class="container">
-  <h1>Welcome to Exif Reader and analysis</h1>
+<!-- ── Upload ──────────────────────────────────────────────────────────────── -->
+{#if !loading && !stats}
+  <UploadScreen {error} onselect={selectFolder} />
+{/if}
 
-  <button onclick={selectFile}>Select a file</button>
-  <button onclick={selectFolder}>Select a folder</button>
-  {#if loading}
-    <p>Loading...</p>
-  {/if}
-  {#if error}
-    <p style="color: red;">Error: {error}</p>
-  {/if}
+<!-- ── Spinner ─────────────────────────────────────────────────────────────── -->
+{#if loading}
+  <SpinnerScreen count={spinCount} />
+{/if}
 
-  {#if photos.length > 0}
-    <h2>Photos found: {photos.length}</h2>
-  {/if}
+<!-- ── Stats ───────────────────────────────────────────────────────────────── -->
+{#if stats}
+  <StatsHeader
+    {folderPath}
+    total={stats.total}
+    {theme}
+    onback={goBack}
+    onthemetoggle={toggleTheme}
+  />
 
-  {#each photos as photo}
-    <div style="margin-top: 1em; padding: 1em; border: 1px solid #ccc; border-radius: 8px; display: flex; gap: 1em; align-items: flex-start; text-align: left;">
-      <img src={photo.thumbnail} alt={photo.filename} style="width: 160px; height: 120px; object-fit: cover; border-radius: 4px; flex-shrink: 0;" />
-      <div>
-        <h2 style="margin: 0 0 0.5em">{photo.filename}</h2>
-        <p><strong>Camera:</strong> {photo.make} {photo.model}</p>
-        <p><strong>Focal Length:</strong> {photo.focal_length}mm</p>
-        <p><strong>Exposure:</strong> 1/{Math.round(1 / photo.shutter)}s at f/{photo.aperture}</p>
-        <p><strong>ISO:</strong> {photo.iso_speed}</p>
-        <p><strong>Date:</strong> {photo.datetime ? new Date(photo.datetime.replace(/^(\S+) (\S+) (\S+)$/, '$1T$2$3')).toLocaleString() : 'Unknown'}</p>
-      </div>
-    </div>
-  {/each}
-</main>
+  <div class="s-content">
+    <KpiGrid {stats} />
+
+    <Histogram
+      title="Focal length"
+      sub="15 mm buckets · 14 mm → 400 mm"
+      bars={flBars}
+      mode={flMode}
+      modeOptions={[{ value: 'count', label: 'Count' }, { value: 'pct', label: '%' }]}
+      onmodechange={(v) => (flMode = v as 'count' | 'pct')}
+    />
+
+    <ApertureGrid stops={apStops} />
+
+    <Histogram
+      title="ISO sensitivity"
+      sub="9 buckets · 50 → 12800+"
+      bars={isoBars}
+      mode={isoMode}
+      modeOptions={[{ value: 'count', label: 'Count' }, { value: 'pct', label: '%' }]}
+      onmodechange={(v) => (isoMode = v as 'count' | 'pct')}
+    />
+
+    <Histogram
+      title="Shutter speed"
+      sub="13 buckets · 30 s → 1/8000"
+      bars={shBars}
+      mode={shMode}
+      modeOptions={[{ value: 'linear', label: 'Linear' }, { value: 'log', label: 'Log' }]}
+      onmodechange={(v) => (shMode = v as 'linear' | 'log')}
+    />
+
+    <RankingList
+      title="Cameras"
+      sub="Top 5 · click for detail"
+      entries={camEntries}
+      onrowclick={(e) => openModal(e, 'camera')}
+    />
+
+    <RankingList
+      title="Lenses"
+      sub="Top 5 · click for detail"
+      entries={lensEntries}
+      onrowclick={(e) => openModal(e, 'lens')}
+    />
+  </div>
+
+  <Modal
+    open={modalOpen}
+    title={modalTitle}
+    sub={modalSub}
+    rows={modalRows}
+    onclose={() => (modalOpen = false)}
+  />
+{/if}
 
 <style>
+  :global(*, *::before, *::after) { box-sizing: border-box; margin: 0; padding: 0; }
 
-:root {
-  font-family: Inter, Avenir, Helvetica, Arial, sans-serif;
-  font-size: 16px;
-  line-height: 24px;
-  font-weight: 400;
-
-  color: #0f0f0f;
-  background-color: #f6f6f6;
-
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  -webkit-text-size-adjust: 100%;
-}
-
-.container {
-  margin: 0;
-  padding-top: 10vh;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  text-align: center;
-}
-
-h1 {
-  text-align: center;
-}
-
-input,
-button {
-  border-radius: 8px;
-  border: 1px solid transparent;
-  padding: 0.6em 1.2em;
-  font-size: 1em;
-  font-weight: 500;
-  font-family: inherit;
-  color: #0f0f0f;
-  background-color: #ffffff;
-  transition: border-color 0.25s;
-  box-shadow: 0 2px 2px rgba(0, 0, 0, 0.2);
-}
-
-button {
-  cursor: pointer;
-}
-
-button:hover {
-  border-color: #396cd8;
-}
-button:active {
-  border-color: #396cd8;
-  background-color: #e8e8e8;
-}
-
-input,
-button {
-  outline: none;
-}
-
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    color: #f6f6f6;
-    background-color: #2f2f2f;
+  :global(:root) {
+    --bg:      oklch(99% 0.002 240);
+    --surface: oklch(100% 0 0);
+    --fg:      oklch(18% 0.012 250);
+    --muted:   oklch(54% 0.012 250);
+    --border:  oklch(92% 0.005 250);
+    --accent:  oklch(58% 0.18 255);
+    --accent-a:oklch(58% 0.18 255 / 0.12);
+    --f:  -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Inter', system-ui, sans-serif;
+    --fd: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Inter', system-ui, sans-serif;
+    --fm: ui-monospace, 'JetBrains Mono', 'SF Mono', Menlo, monospace;
+    --r:    8px;
+    --ease: 0.15s ease;
   }
 
-  a:hover {
-    color: #24c8db;
+  :global([data-theme="dark"]) {
+    --bg:      oklch(13% 0.01 250);
+    --surface: oklch(18% 0.012 250);
+    --fg:      oklch(96% 0.005 250);
+    --muted:   oklch(58% 0.012 250);
+    --border:  oklch(28% 0.012 250);
+    --accent:  oklch(65% 0.18 255);
+    --accent-a:oklch(65% 0.18 255 / 0.15);
   }
 
-  input,
-  button {
-    color: #ffffff;
-    background-color: #0f0f0f98;
+  :global(html, body) {
+    height: 100%;
+    background: var(--bg);
+    color: var(--fg);
+    font-family: var(--f);
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    transition: background var(--ease), color var(--ease);
   }
-  button:active {
-    background-color: #0f0f0f69;
-  }
-}
 
+  .s-content {
+    max-width: 1080px;
+    margin: 0 auto;
+    padding: 36px 28px 80px;
+  }
 </style>
