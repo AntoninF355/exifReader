@@ -1,7 +1,7 @@
 export interface PhotoMetadata {
   filename: string;
   iso_speed: number;
-  lens?: string | null;
+  lens: string;
   shutter: number;
   aperture: number;
   focal_length: number;
@@ -34,25 +34,25 @@ export interface PhotoStats {
   total: number,
 
   //key stats
-  most_used_focal_length: number,
-  median_aperture: number,
-  median_iso: number,
-  most_active_hour: number,
+  most_used_focal_length: number | null,
+  median_aperture: number | null,
+  median_iso: number | null,
+  most_active_hour: number | null,
 
   //histograms
-  focal_length_buckets: BucketEntry,
-  aperture_stops: ApertureCell,
-  iso_buckets: BucketEntry,
-  shutter_buckets: BucketEntry,
+  focal_length_buckets: BucketEntry[],
+  aperture_stops: ApertureCell[],
+  iso_buckets: BucketEntry[],
+  shutter_buckets: BucketEntry[],
 
   //Classements
-  cameras: RankingEntry,
-  lenses: RankingEntry,
+  cameras: RankingEntry[],
+  lenses: RankingEntry[],
 
-  shooting_hours: number
+  shooting_hours: number[]
 }
 
 export interface FolderAnalysis {
-  photos: PhotoMetadata,
+  photos: PhotoMetadata[],
   stats: PhotoStats
 }
